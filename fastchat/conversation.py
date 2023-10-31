@@ -28,6 +28,7 @@ class SeparatorStyle(IntEnum):
     PHOENIX = auto()
     ROBIN = auto()
     FALCON_CHAT = auto()
+    VOLC_MAAS = auto()
 
 
 @dataclasses.dataclass
@@ -58,6 +59,15 @@ class Conversation:
     def get_prompt(self) -> str:
         """Get the prompt for generation."""
         system_prompt = self.system_template.format(system_message=self.system_message)
+        if self.sep_style == SeparatorStyle.VOLC_MAAS:
+            if self.system_message and system_prompt:
+                ret = system_prompt + self.sep
+            else:
+                ret = ""
+            for role, message in self.messages:
+                if message:
+                    ret += role + message + self.sep
+            return ret
         if self.sep_style == SeparatorStyle.ADD_COLON_SINGLE:
             ret = system_prompt + self.sep
             for role, message in self.messages:
@@ -770,6 +780,18 @@ register_conv_template(
         sep_style=SeparatorStyle.ADD_COLON_TWO,
         sep="\n",
         sep2="</s>",
+    )
+)
+
+
+# volc_maas default template
+register_conv_template(
+    Conversation(
+        name="volc_maas",
+        system_template="""SYSTEM*+-{system_message}""",
+        roles=("USER*+-", "ASSISTANT*+-"),
+        sep_style=SeparatorStyle.VOLC_MAAS,
+        sep="jiagoushijiagoushi",
     )
 )
 

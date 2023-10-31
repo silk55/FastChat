@@ -1,0 +1,462 @@
+"""
+A model worker that calls volc mass api
+
+Register models in a JSON file with the following format:
+{
+    "skylark-pro-public": {
+        "model_path": "volc_maas",
+        "host": "maas-api.ml-platform-cn-beijing.volces.com",
+        "ak": "xxxx",
+        "sk": "xxxx"
+        "context_length": 2048,
+        "region": "cn-beijing",
+        "model_names": "skylark-pro-public",
+    }
+}
+
+"model_path", "api_base", "token", and "context_length" are necessary, while others are optional.
+"model_path" must contain volc_maas
+"""
+import argparse
+import asyncio
+import json
+import uuid
+from typing import List, Optional
+
+import requests
+import uvicorn
+from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from volcengine.maas import MaasService, MaasException, ChatRole
+
+from fastchat.constants import SERVER_ERROR_MSG, ErrorCode
+from fastchat.serve.base_model_worker import BaseModelWorker
+from fastchat.utils import build_logger
+import os
+from pprint import pprint
+
+default_region = "cn-beijing"
+default_host = "maas-api.ml-platform-cn-beijing.volces.com"
+
+
+worker_id = str(uuid.uuid4())[:8]
+logger = build_logger("model_worker", f"model_worker_{worker_id}.log")
+
+workers = []
+worker_map = {}
+app = FastAPI()
+
+
+# reference to
+def get_gen_kwargs(
+    params,
+    seed: Optional[int] = None,
+):
+    stop = params.get("stop", None)
+    if isinstance(stop, list):
+        stop_sequences = stop
+    elif isinstance(stop, str):
+        stop_sequences = [stop]
+    else:
+        stop_sequences = []
+    # prompt is not necessary, here we just using conv from base worker
+    prompt = params["prompt"]
+
+    reqC = ModelRequest(model_name=params["model"],
+                        temperature=params["temperature"],
+                        top_p=params["top_p"],
+                        max_new_tokens=params["max_new_tokens"],
+                        )
+    
+    reqC.parse_promt(prompt)
+    # document: "https://www.volcengine.com/docs/82379/1099475"
+    req = reqC.get_request()
+    # no using
+    gen_kwargs = {
+        "do_sample": True,
+        "return_full_text": bool(params.get("echo", False)),
+        "max_new_tokens": int(params.get("max_new_tokens", 256)),
+        "top_p": float(params.get("top_p", 1.0)),
+        "temperature": float(params.get("temperature", 1.0)),
+        "stop_sequences": stop_sequences,
+        "repetition_penalty": float(params.get("repetition_penalty", 1.0)),
+        "top_k": params.get("top_k", None),
+        "seed": seed,
+        "req": req,
+    }
+    return gen_kwargs
+
+
+def could_be_stop(text, stop):
+    for s in stop:
+        if any(text.endswith(s[:i]) for i in range(1, len(s) + 1)):
+            return True
+    return False
+
+
+class ModelRequest:
+    def __init__(self, model_name='skylark-pro-public', max_new_tokens=15, temperature=0.5, top_p=0.9, top_k=0):
+        self.req = {
+            "model": {
+                "name": model_name,
+            },
+            "parameters": {
+                "max_new_tokens": max_new_tokens,  
+                "temperature": temperature, 
+                "top_p": top_p, 
+                "top_k": top_k, 
+            },
+            "messages": []
+        }
+
+    def add_message(self, role, content):
+        self.req["messages"].append({
+            "role": role,
+            "content": content,
+        })
+        
+    def append_last(self, content):
+        if len(self.req["messages"]) == 0:
+            return
+        self.req["messages"][-1]["content"] += content
+
+    def get_request(self):
+        return self.req
+
+    # hackable parser
+    def parse_promt(self, prompt):
+        default_seq = 'jiagoushijiagoushi'
+        default_system = 'SYSTEM*+-'
+        default_user = 'USER*+-'
+        default_assistant = 'ASSISTANT*+-'
+        import re
+        parts = re.split(default_seq,prompt)
+        for message in parts:
+            if message.startswith(default_system):
+                self.add_message(ChatRole.SYSTEM,message.removeprefix(default_system).removesuffix('\n').strip())
+            elif message.startswith(default_user):
+                self.add_message(ChatRole.USER,message.removeprefix(default_user).removesuffix('\n').strip())
+            elif message.startswith(default_assistant):
+                self.add_message(ChatRole.ASSISTANT,message.removeprefix(default_assistant).removesuffix('\n').strip())
+            else:  
+                self.append_last(message) 
+        # parse_failed, directly do
+        if len(self.req["messages"]) == 0:
+            self.add_message(ChatRole.USER,prompt)
+
+
+class VolcMaasApiWorker(BaseModelWorker):
+    def __init__(
+        self,
+        controller_addr: str,
+        worker_addr: str,
+        worker_id: str,
+        model_path: str,
+        host: str,
+        ak: str,
+        sk: str,
+        region: str,
+        context_length: int,
+        model_names: List[str],
+        limit_worker_concurrency: int,
+        no_register: bool,
+        conv_template: Optional[str] = None,
+        seed: Optional[int] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            controller_addr,
+            worker_addr,
+            worker_id,
+            model_path,
+            model_names,
+            limit_worker_concurrency,
+            conv_template=conv_template,
+        )
+
+        self.model_path = model_path
+        self.host = host
+        self.ak = ak
+        self.sk = sk
+        self.context_len = context_length
+        self.seed = seed
+        self.region = region
+
+        logger.info(
+            f"Connecting with huggingface api {self.model_path} as {self.model_names} on worker {worker_id} ..."
+        )
+
+        if not no_register:
+            self.init_heart_beat()
+
+    # todo
+    def count_token(self, params):
+        # No tokenizer here
+        ret = {
+            "count": 0,
+            "error_code": 0,
+        }
+        return ret
+
+    def generate_stream_gate(self, params):
+        self.call_ct += 1
+        
+        gen_kwargs = get_gen_kwargs(params, seed=self.seed)
+        stop = gen_kwargs["stop_sequences"]
+        pprint(gen_kwargs["req"])
+
+        logger.info(f"gen_kwargs: {gen_kwargs}")
+
+        try:
+            host = default_host if self.host == "" else self.host
+            region = default_region if self.region == "" else self.region
+            volc_ak = os.getenv("VOLC_ACCESSKEY") if self.ak == "" else self.ak
+            volc_sk = os.getenv("VOLC_SECRETKEY") if self.sk == "" else self.sk
+            client = MaasService(host=host, region=region)
+            client.set_ak(volc_ak)
+            client.set_sk(volc_sk)
+            res = client.stream_chat(gen_kwargs["req"])
+        
+            reason = None
+            text = ""
+            for chunk in res:
+                text += chunk.choice.message.content
+
+                s = next((x for x in stop if text.endswith(x)), None)
+                if s is not None:
+                    text = text[: -len(s)]
+                    reason = "stop"
+                    break
+                if could_be_stop(text, stop):
+                    continue
+                if (
+                    chunk.choice.finish_reason is not None
+                ):
+                    reason = chunk.choice.finish_reason
+                if reason not in ["stop", "length"]:
+                    reason = None
+                ret = {
+                    "text": text,
+                    "error_code": 0,
+                    "finish_reason": reason,
+                }
+                yield json.dumps(ret).encode() + b"\0"
+        except Exception as e:
+            ret = {
+                "text": f"{SERVER_ERROR_MSG}\n\n({e})",
+                "error_code": ErrorCode.INTERNAL_ERROR,
+            }
+            yield json.dumps(ret).encode() + b"\0"
+
+    def generate_gate(self, params):
+        for x in self.generate_stream_gate(params):
+            pass
+        return json.loads(x[:-1].decode())
+
+    def get_embeddings(self, params):
+        raise NotImplementedError()
+
+
+def release_worker_semaphore(worker):
+    worker.semaphore.release()
+
+
+def acquire_worker_semaphore(worker):
+    if worker.semaphore is None:
+        worker.semaphore = asyncio.Semaphore(worker.limit_worker_concurrency)
+    return worker.semaphore.acquire()
+
+
+def create_background_tasks(worker):
+    background_tasks = BackgroundTasks()
+    background_tasks.add_task(lambda: release_worker_semaphore(worker))
+    return background_tasks
+
+
+@app.post("/worker_generate_stream")
+async def api_generate_stream(request: Request):
+    params = await request.json()
+    worker = worker_map[params["model"]]
+    await acquire_worker_semaphore(worker)
+    generator = worker.generate_stream_gate(params)
+    background_tasks = create_background_tasks(worker)
+    return StreamingResponse(generator, background=background_tasks)
+
+
+@app.post("/worker_generate")
+async def api_generate(request: Request):
+    params = await request.json()
+    worker = worker_map[params["model"]]
+    await acquire_worker_semaphore(worker)
+    output = worker.generate_gate(params)
+    release_worker_semaphore(worker)
+    return JSONResponse(output)
+
+
+@app.post("/worker_get_embeddings")
+async def api_get_embeddings(request: Request):
+    params = await request.json()
+    worker = worker_map[params["model"]]
+    await acquire_worker_semaphore(worker)
+    embedding = worker.get_embeddings(params)
+    release_worker_semaphore(worker)
+    return JSONResponse(content=embedding)
+
+
+@app.post("/worker_get_status")
+async def api_get_status(request: Request):
+    return {
+        "model_names": [m for w in workers for m in w.model_names],
+        "speed": 1,
+        "queue_length": sum([w.get_queue_length() for w in workers]),
+    }
+
+
+@app.post("/count_token")
+async def api_count_token(request: Request):
+    params = await request.json()
+    worker = worker_map[params["model"]]
+    return worker.count_token(params)
+
+
+@app.post("/worker_get_conv_template")
+async def api_get_conv(request: Request):
+    params = await request.json()
+    worker = worker_map[params["model"]]
+    return worker.get_conv_template()
+
+
+@app.post("/model_details")
+async def api_model_details(request: Request):
+    params = await request.json()
+    worker = worker_map[params["model"]]
+    return {"context_length": worker.context_len}
+
+
+def create_volc_maas_api_worker():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("--port", type=int, default=21002)
+    parser.add_argument("--worker-address", type=str, default="http://localhost:21002")
+    parser.add_argument(
+        "--controller-address", type=str, default="http://localhost:21001"
+    )
+    # all model-related parameters are listed in --model-info-file
+    parser.add_argument(
+        "--model-info-file",
+        type=str,
+        required=True,
+        help="maas model's info file path",
+    )
+
+    parser.add_argument(
+        "--limit-worker-concurrency",
+        type=int,
+        default=5,
+        help="Limit the model concurrency to prevent OOM.",
+    )
+    parser.add_argument("--no-register", action="store_true")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Overwrite the random seed for each generation.",
+    )
+    args = parser.parse_args()
+
+    with open(args.model_info_file, "r", encoding="UTF-8") as f:
+        model_info = json.load(f)
+
+    logger.info(f"args: {args}")
+
+    model_path_list = []
+    host_list = []
+    ak_list = []
+    sk_list = []
+    context_length_list = []
+    model_names_list = []
+    conv_template_list = []
+    region_list = []
+
+    for m in model_info:
+        model_path_list.append(model_info[m]["model_path"])
+        host_list.append(model_info[m]["host"])
+        ak_list.append(model_info[m]["ak"])
+        sk_list.append(model_info[m]["sk"])
+        t_region = model_info[m].get("region","")
+        region_list.append(t_region)
+
+        context_length = model_info[m]["context_length"]
+        model_names = model_info[m].get("model_names", [m.split("/")[-1]])
+        if isinstance(model_names, str):
+            model_names = [model_names]
+        conv_template = model_info[m].get("conv_template", None)
+
+        context_length_list.append(context_length)
+        model_names_list.append(model_names)
+        conv_template_list.append(conv_template)
+
+    logger.info(f"Model paths: {model_path_list}")
+    logger.info(f"Context lengths: {context_length_list}")
+    logger.info(f"Model names: {model_names_list}")
+    logger.info(f"Conv templates: {conv_template_list}")
+
+    for (
+        model_names,
+        conv_template,
+        model_path,
+        host,
+        ak,
+        sk,
+        region,
+        context_length,
+    ) in zip(
+        model_names_list,
+        conv_template_list,
+        model_path_list,
+        host_list,
+        ak_list,
+        sk_list,
+        region_list,
+        context_length_list,
+    ):
+        m = VolcMaasApiWorker(
+            args.controller_address,
+            args.worker_address,
+            worker_id,
+            model_path,
+            host,
+            ak,
+            sk,
+            region,
+            context_length,
+            model_names,
+            args.limit_worker_concurrency,
+            no_register=args.no_register,
+            conv_template=conv_template,
+            seed=args.seed,
+        )
+        workers.append(m)
+        for name in model_names:
+            worker_map[name] = m
+
+    # register all the models
+    url = args.controller_address + "/register_worker"
+    data = {
+        "worker_name": workers[0].worker_addr,
+        "check_heart_beat": not args.no_register,
+        "worker_status": {
+            "model_names": [m for w in workers for m in w.model_names],
+            "speed": 1,
+            "queue_length": sum([w.get_queue_length() for w in workers]),
+        },
+    }
+    r = requests.post(url, json=data)
+    assert r.status_code == 200
+
+    return args, workers
+
+
+if __name__ == "__main__":
+    args, workers = create_volc_maas_api_worker()
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
