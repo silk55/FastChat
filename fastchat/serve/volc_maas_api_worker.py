@@ -206,7 +206,6 @@ class VolcMaasApiWorker(BaseModelWorker):
         pprint(gen_kwargs["req"])
 
         logger.info(f"gen_kwargs: {gen_kwargs}")
-        
 
         try:
             host = default_host if self.host == "" else self.host
@@ -221,7 +220,7 @@ class VolcMaasApiWorker(BaseModelWorker):
             reason = None
             text = ""
             for chunk in res:
-                if chunk.choice is not None and chunk.choice.message is not None:
+                if chunk.choice is not None and chunk.choice.message is not None and chunk.choice.message.content is not None:
                     text += chunk.choice.message.content
                 
                 s = next((x for x in stop if text.endswith(x)), None)
