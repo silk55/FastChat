@@ -206,6 +206,7 @@ class VolcMaasApiWorker(BaseModelWorker):
         pprint(gen_kwargs["req"])
 
         logger.info(f"gen_kwargs: {gen_kwargs}")
+        
 
         try:
             host = default_host if self.host == "" else self.host
@@ -220,8 +221,9 @@ class VolcMaasApiWorker(BaseModelWorker):
             reason = None
             text = ""
             for chunk in res:
-                text += chunk.choice.message.content
-
+                if chunk.choice is not None and chunk.choice.message is not None:
+                    text += chunk.choice.message.content
+                
                 s = next((x for x in stop if text.endswith(x)), None)
                 if s is not None:
                     text = text[: -len(s)]
@@ -230,15 +232,22 @@ class VolcMaasApiWorker(BaseModelWorker):
                 if could_be_stop(text, stop):
                     continue
                 if (
+                    chunk.choice is not None and
                     chunk.choice.finish_reason is not None
                 ):
                     reason = chunk.choice.finish_reason
                 if reason not in ["stop", "length"]:
                     reason = None
+                # todo hackacble 
                 ret = {
                     "text": text,
                     "error_code": 0,
                     "finish_reason": reason,
+                    "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0 + 0,
+                    },
                 }
                 yield json.dumps(ret).encode() + b"\0"
         except Exception as e:
