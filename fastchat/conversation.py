@@ -8,6 +8,7 @@ If you have any changes in mind, please contribute back so the community can ben
 import dataclasses
 from enum import auto, IntEnum
 from typing import List, Any, Dict, Union, Tuple
+import json
 
 
 class SeparatorStyle(IntEnum):
@@ -60,14 +61,13 @@ class Conversation:
         """Get the prompt for generation."""
         system_prompt = self.system_template.format(system_message=self.system_message)
         if self.sep_style == SeparatorStyle.VOLC_MAAS:
+            prompt_list = []
             if self.system_message and system_prompt:
-                ret = system_prompt + self.sep
-            else:
-                ret = ""
+                prompt_list.append({"role": self.system_template , "content": self.system_message})
             for role, message in self.messages:
                 if message:
-                    ret += role + message + self.sep
-            return ret
+                    prompt_list.append({"role": role, "content": message})
+            return json.dumps(prompt_list)
         if self.sep_style == SeparatorStyle.ADD_COLON_SINGLE:
             ret = system_prompt + self.sep
             for role, message in self.messages:
@@ -788,10 +788,10 @@ register_conv_template(
 register_conv_template(
     Conversation(
         name="volc_maas",
-        system_template="""SYSTEM*+-{system_message}""",
+        system_template="""SYSTEM*+-""",
         roles=("USER*+-", "ASSISTANT*+-"),
         sep_style=SeparatorStyle.VOLC_MAAS,
-        sep="jiagoushijiagoushi",
+        sep="\n",
     )
 )
 

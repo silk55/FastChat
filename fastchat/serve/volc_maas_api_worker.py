@@ -125,21 +125,20 @@ class ModelRequest:
 
     # hackable parser
     def parse_promt(self, prompt):
-        default_seq = 'jiagoushijiagoushi'
         default_system = 'SYSTEM*+-'
         default_user = 'USER*+-'
         default_assistant = 'ASSISTANT*+-'
-        import re
-        parts = re.split(default_seq,prompt)
-        for message in parts:
-            if message.startswith(default_system):
-                self.add_message(ChatRole.SYSTEM,message.removeprefix(default_system).removesuffix('\n').strip())
-            elif message.startswith(default_user):
-                self.add_message(ChatRole.USER,message.removeprefix(default_user).removesuffix('\n').strip())
-            elif message.startswith(default_assistant):
-                self.add_message(ChatRole.ASSISTANT,message.removeprefix(default_assistant).removesuffix('\n').strip())
-            else:  
-                self.append_last(message) 
+        try:
+            parts = json.loads(prompt)
+            for part in parts:
+                if part['role'] == default_system:
+                    self.add_message(ChatRole.SYSTEM, part['content'])
+                if part['role'] == default_user:
+                    self.add_message(ChatRole.USER, part['content'])
+                if part['role'] == default_assistant:
+                    self.add_message(ChatRole.ASSISTANT,part['content'])
+        except json.JSONDecodeError as e:
+            self.add_message(ChatRole.USER,prompt)
         # parse_failed, directly do
         if len(self.req["messages"]) == 0:
             self.add_message(ChatRole.USER,prompt)
@@ -216,7 +215,7 @@ class VolcMaasApiWorker(BaseModelWorker):
             client.set_ak(volc_ak)
             client.set_sk(volc_sk)
             res = client.stream_chat(gen_kwargs["req"])
-        
+            
             reason = None
             text = ""
             for chunk in res:
