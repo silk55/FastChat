@@ -1483,7 +1483,17 @@ class WizardCoderAdapter(BaseModelAdapter):
         # https://github.com/nlpxucan/WizardLM/blob/main/WizardCoder/src/inference_wizardcoder.py#L60
         return get_conv_template("alpaca")
 
+class VolcMaasAdapter(BaseModelAdapter):
+    """The model adapter for maas"""
 
+    use_fast_tokenizer = False
+
+    def match(self, model_path: str):
+        return "volc_maas" in model_path.lower()
+
+    def get_default_conv_template(self, model_path: str) -> Conversation:
+        return get_conv_template("volc_maas")
+    
 class QwenChatAdapter(BaseModelAdapter):
     """The model adapter for Qwen/Qwen-7B-Chat
     To run this model, you need to ensure additional flash attention installation:
@@ -1893,6 +1903,7 @@ register_model_adapter(ZephyrAdapter)
 register_model_adapter(XwinLMAdapter)
 register_model_adapter(LemurAdapter)
 register_model_adapter(PygmalionAdapter)
+register_model_adapter(VolcMaasAdapter)
 
 
 # After all adapters, try the default base adapter.
