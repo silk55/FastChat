@@ -8,6 +8,7 @@ If you have any changes in mind, please contribute back so the community can ben
 import dataclasses
 from enum import auto, IntEnum
 from typing import List, Any, Dict, Union, Tuple
+import json
 
 
 class SeparatorStyle(IntEnum):
@@ -32,6 +33,7 @@ class SeparatorStyle(IntEnum):
     DEEPSEEK_CHAT = auto()
     METAMATH = auto()
     YUAN2 = auto()
+    VOLC_MAAS = auto()
 
 
 @dataclasses.dataclass
@@ -62,6 +64,14 @@ class Conversation:
     def get_prompt(self) -> str:
         """Get the prompt for generation."""
         system_prompt = self.system_template.format(system_message=self.system_message)
+        if self.sep_style == SeparatorStyle.VOLC_MAAS:
+            prompt_list = []
+            if self.system_message and system_prompt:
+                prompt_list.append({"role": self.system_template , "content": self.system_message})
+            for role, message in self.messages:
+                if message:
+                    prompt_list.append({"role": role, "content": message})
+            return json.dumps(prompt_list)
         if self.sep_style == SeparatorStyle.ADD_COLON_SINGLE:
             ret = system_prompt + self.sep
             for role, message in self.messages:
@@ -1389,105 +1399,17 @@ register_conv_template(
     )
 )
 
-# CatPPT template
-# reference: https://huggingface.co/rishiraj/CatPPT
+# volc_maas default template
 register_conv_template(
     Conversation(
-        name="catppt",
-        system_template="<|system|>\n{system_message}",
-        roles=("<|user|>", "<|assistant|>"),
-        sep_style=SeparatorStyle.CHATML,
-        sep="</s>",
-        stop_token_ids=[2],
-        stop_str="</s>",
+        name="volc_maas",
+        system_template="""SYSTEM*+-""",
+        roles=("USER*+-", "ASSISTANT*+-"),
+        sep_style=SeparatorStyle.VOLC_MAAS,
+        sep="\n",
     )
 )
 
-# TinyLlama template
-# reference: https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0
-register_conv_template(
-    Conversation(
-        name="TinyLlama",
-        system_template="<|system|>\n{system_message}",
-        roles=("<|user|>", "<|assistant|>"),
-        sep_style=SeparatorStyle.CHATML,
-        sep="</s>",
-        stop_token_ids=[2],
-        stop_str="</s>",
-    )
-)
-
-# Orca-2 template
-# reference: https://huggingface.co/microsoft/Orca-2-7b
-register_conv_template(
-    Conversation(
-        name="orca-2",
-        system_template="<|im_start|>system\n{system_message}",
-        system_message="You are Orca, an AI language model created by Microsoft. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behavior.",
-        roles=("<|im_start|>user", "<|im_start|>assistant"),
-        sep_style=SeparatorStyle.CHATML,
-        sep="<|im_end|>",
-        stop_str="<|im_end|>",
-    )
-)
-
-# Deepseek-chat template
-# reference: https://huggingface.co/deepseek-ai/deepseek-llm-67b-chat/blob/main/tokenizer_config.json
-register_conv_template(
-    Conversation(
-        name="deepseek-chat",
-        system_message="<｜begin▁of▁sentence｜>",  # must add a bos token before first message
-        roles=("User", "Assistant"),
-        sep_style=SeparatorStyle.DEEPSEEK_CHAT,
-        sep="\n\n",
-        sep2="<｜end▁of▁sentence｜>",
-        stop_str="<｜end▁of▁sentence｜>",
-    )
-)
-
-# Yuan2.0 chat template
-# source: https://huggingface.co/IEITYuan/Yuan2-2B-Janus-hf/blob/main/tokenizer_config.json#L6
-register_conv_template(
-    Conversation(
-        name="yuan2",
-        roles=("user", "assistant"),
-        sep_style=SeparatorStyle.YUAN2,
-        sep="<sep>",
-        sep2="\n",
-        stop_token_ids=[
-            77185,
-        ],  # "<eod>"
-        stop_str="<eod>",
-    )
-)
-
-# Solar-10.7B Chat Template
-# Reference: https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0/blob/main/tokenizer_config.json
-register_conv_template(
-    Conversation(
-        name="solar",
-        system_message="",
-        roles=("### User", "### Assistant"),
-        sep_style=SeparatorStyle.ADD_NEW_LINE_SINGLE,
-        sep="\n\n",
-        stop_str="</s>",
-    )
-)
-
-
-# yuan 2.0 template
-# reference:https://github.com/IEIT-Yuan/Yuan-2.0
-# reference:https://huggingface.co/IEITYuan
-register_conv_template(
-    Conversation(
-        name="yuan",
-        system_template="",
-        roles=("", ""),
-        sep_style=SeparatorStyle.NO_COLON_SINGLE,
-        sep="<sep>",
-        stop_str="<eod>",
-    )
-)
 
 if __name__ == "__main__":
     from fastchat.conversation import get_conv_template
