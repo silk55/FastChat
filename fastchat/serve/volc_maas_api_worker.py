@@ -239,11 +239,7 @@ class VolcMaasApiWorker(BaseModelWorker):
                     "text": text,
                     "error_code": 0,
                     "finish_reason": reason,
-                    "usage": {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "total_tokens": 0 + 0,
-                    },
+                    "usage": chunk.usage,
                 }
                 yield json.dumps(ret).encode() + b"\0"
         except Exception as e:
