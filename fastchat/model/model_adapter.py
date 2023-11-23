@@ -1930,6 +1930,16 @@ class MicrosoftOrcaAdapter(BaseModelAdapter):
         return get_conv_template("orca-2")
 
 
+class YiAdapter(BaseModelAdapter):
+    """The model adapter for Yi models"""
+
+    def match(self, model_path: str):
+        return "yi-34b-chat" in model_path.lower()
+
+    def get_default_conv_template(self, model_path: str) -> Conversation:
+        return get_conv_template("Yi-34b-chat")
+
+
 # Note: the registration order matters.
 # The one registered earlier has a higher matching priority.
 register_model_adapter(RerankAdapter)
@@ -2001,6 +2011,7 @@ register_model_adapter(LemurAdapter)
 register_model_adapter(PygmalionAdapter)
 register_model_adapter(VolcMaasAdapter)
 register_model_adapter(MicrosoftOrcaAdapter)
+register_model_adapter(YiAdapter)
 
 # After all adapters, try the default base adapter.
 register_model_adapter(BaseModelAdapter)
