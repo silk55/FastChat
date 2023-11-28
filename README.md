@@ -2,7 +2,7 @@
 fork from https://github.com/lm-sys/FastChat
 and add support for volc maas, click https://www.volcengine.com/docs/82379/1099475 to see detail
 
-## how to use
+
 
 ## how to install
 * cd path
@@ -11,6 +11,8 @@ and add support for volc maas, click https://www.volcengine.com/docs/82379/10994
 or install after build whl
 * python -m build
 * pip install fschat*.whl
+
+## how to use
 
 ### origin readme
 original readme to see origin-readme.md
