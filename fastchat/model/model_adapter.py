@@ -308,6 +308,11 @@ def load_model(
     if dtype is not None:  # Overwrite dtype if it is provided in the arguments.
         kwargs["torch_dtype"] = dtype
 
+    # hackable
+    if isinstance(adapter,RerankAdapter):
+        model, tokenizer = adapter.load_model(model_path, {"device": device})
+        return model, tokenizer
+    
     # Load model
     model, tokenizer = adapter.load_model(model_path, kwargs)
 
@@ -1597,6 +1602,36 @@ class BGEAdapter(BaseModelAdapter):
         return get_conv_template("one_shot")
 
 
+class RerankAdapter(BaseModelAdapter):
+    """The model adapter for rerank (e.g., BAAI/bge-rerank-large) but should not occur bge"""
+    
+    use_fast_tokenizer = False
+    
+    def match(self, model_path: str):
+        return "rerank" in model_path.lower()
+    
+    def load_model(self, model_path: str, from_pretrained_kwargs: dict):
+        from sentence_transformers.cross_encoder import CrossEncoder
+        revision = from_pretrained_kwargs.get("revision", "main")
+        model = CrossEncoder(
+            model_path,
+            **from_pretrained_kwargs,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path, trust_remote_code=True, revision=revision
+        )
+        if hasattr(model.config, "max_position_embeddings") and hasattr(
+            tokenizer, "model_max_length"
+        ):
+            model.config.max_sequence_length = min(
+                model.config.max_position_embeddings, tokenizer.model_max_length
+            )
+        return model, tokenizer
+
+    def get_default_conv_template(self, model_path: str) -> Conversation:
+        return get_conv_template("one_shot")
+
+
 class E5Adapter(BaseModelAdapter):
     """The model adapter for E5 (e.g., intfloat/e5-large-v2)"""
 
@@ -1839,6 +1874,7 @@ class PygmalionAdapter(BaseModelAdapter):
 
 # Note: the registration order matters.
 # The one registered earlier has a higher matching priority.
+register_model_adapter(RerankAdapter)
 register_model_adapter(PeftModelAdapter)
 register_model_adapter(VicunaAdapter)
 register_model_adapter(AiroborosAdapter)

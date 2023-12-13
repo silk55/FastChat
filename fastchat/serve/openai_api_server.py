@@ -48,6 +48,8 @@ from fastchat.protocol.openai_api_protocol import (
     CompletionStreamResponse,
     EmbeddingsRequest,
     EmbeddingsResponse,
+    RerankRequest,
+    RerankResponse,
     ErrorResponse,
     LogProbs,
     ModelCard,
@@ -703,6 +705,35 @@ async def get_embedding(payload: Dict[str, Any]):
 
     embedding = await fetch_remote(worker_addr + "/worker_get_embeddings", payload)
     return json.loads(embedding)
+
+
+@app.post("/v1/rerank", dependencies=[Depends(check_api_key)])
+@app.post("/v1/engines/{model_name}/rerank", dependencies=[Depends(check_api_key)])
+async def create_rerank(request: RerankRequest, model_name: str = None):
+    """Creates embeddings for the text"""
+    if request.model is None:
+        request.model = model_name
+    error_check_ret = await check_model(request)
+    if error_check_ret is not None:
+        return error_check_ret
+
+    request.documents = process_input(request.model, request.documents)
+
+    data = await get_rerank(dict(request))
+    return RerankResponse(
+        data=data.get('rerank'),
+        model=request.model,
+    ).dict(exclude_none=True)
+
+
+
+async def get_rerank(payload: Dict[str, Any]):
+    controller_address = app_settings.controller_address
+    model_name = payload["model"]
+    worker_addr = await get_worker_address(model_name)
+
+    rerank = await fetch_remote(worker_addr + "/worker_get_rerank", payload)
+    return json.loads(rerank)
 
 
 ### GENERAL API - NOT OPENAI COMPATIBLE ###

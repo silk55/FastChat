@@ -124,6 +124,16 @@ async def api_get_embeddings(request: Request):
     return JSONResponse(content=embedding, background=background_tasks)
 
 
+@app.post("/worker_get_rerank")
+async def api_get_rerank(request: Request):
+    params = await request.json()
+    await acquire_worker_semaphore()
+    worker = worker_map[params["model"]]
+    rank = worker.get_rerank(params)
+    release_worker_semaphore()
+    return JSONResponse(content=rank)
+
+
 @app.post("/worker_get_status")
 async def api_get_status(request: Request):
     return {
