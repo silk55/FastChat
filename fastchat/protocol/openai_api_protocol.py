@@ -147,6 +147,22 @@ class EmbeddingsResponse(BaseModel):
     model: str
     usage: UsageInfo
 
+class RerankRequest(BaseModel):
+    model: Optional[str] = None
+    engine: Optional[str] = None
+    user: Optional[str] = None
+    encoding_format: Optional[str] = None
+    documents: Optional[List[str]] = None
+    query: Optional[str] = None
+    top_n: Optional[int] = None
+    return_documents: Optional[bool] = False
+    
+
+class RerankResponse(BaseModel):
+    object: str = "list"
+    data: List[Dict[str, Any]]
+    model: str
+
 
 class CompletionRequest(BaseModel):
     model: str

@@ -173,6 +173,9 @@ class BaseModelWorker:
     def get_embeddings(self, params):
         raise NotImplementedError
 
+    def get_rerank(self, params):
+        raise NotImplementedError
+    
 
 def release_worker_semaphore():
     worker.semaphore.release()
@@ -215,6 +218,15 @@ async def api_get_embeddings(request: Request):
     embedding = worker.get_embeddings(params)
     release_worker_semaphore()
     return JSONResponse(content=embedding)
+
+
+@app.post("/worker_get_rerank")
+async def api_get_rank(request: Request):
+    params = await request.json()
+    await acquire_worker_semaphore()
+    rank = worker.get_rerank(params)
+    release_worker_semaphore()
+    return JSONResponse(content=rank)
 
 
 @app.post("/worker_get_status")
