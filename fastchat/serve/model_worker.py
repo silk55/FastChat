@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 from transformers import set_seed
 import uvicorn
+import numpy as np
 
 from fastchat.constants import ErrorCode, SERVER_ERROR_MSG
 from fastchat.model.model_adapter import (
@@ -243,6 +244,51 @@ class ModelWorker(BaseModelWorker):
                 torch.xpu.empty_cache()
             if self.device == "npu":
                 torch.npu.empty_cache()
+        except torch.cuda.OutOfMemoryError as e:
+            ret = {
+                "text": f"{SERVER_ERROR_MSG}\n\n({e})",
+                "error_code": ErrorCode.CUDA_OUT_OF_MEMORY,
+            }
+        except (ValueError, RuntimeError) as e:
+            ret = {
+                "text": f"{SERVER_ERROR_MSG}\n\n({e})",
+                "error_code": ErrorCode.INTERNAL_ERROR,
+            }
+        return ret
+    
+    
+    @torch.inference_mode()
+    def get_rerank(self, params):
+        self.call_ct += 1
+        try:
+            query = params["query"]
+            documents = params["documents"]
+            top_n = params.get('top_n')
+            return_documents = params.get('return_documents')
+            sentence_combinations = [[query, doc] for doc in documents]
+            similarity_scores = self.model.predict(sentence_combinations)
+            sim_scores_argsort = list(reversed(np.argsort(similarity_scores)))
+            if top_n:
+                sim_scores_argsort = sim_scores_argsort[:top_n]
+            if return_documents:
+                docs = [
+                    {
+                    "index": int(arg),
+                    "relevance_score": float(similarity_scores[arg]),
+                    "document": documents[arg],
+                    }
+                    for arg in sim_scores_argsort
+                ]
+            else:
+                docs = [
+                    {
+                    "index": int(arg),
+                    "relevance_score": float(similarity_scores[arg]),
+                    }
+                    for arg in sim_scores_argsort
+                ]
+            ret = {"rerank": docs}
+            
         except torch.cuda.OutOfMemoryError as e:
             ret = {
                 "text": f"{SERVER_ERROR_MSG}\n\n({e})",
