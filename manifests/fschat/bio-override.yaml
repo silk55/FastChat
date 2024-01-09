@@ -1,0 +1,24 @@
+release:
+- name: fschat
+  namespace: {{ .Values.namespace }}
+  disableValidationOnInstall: true
+  installed: true
+  chart: {{ .Values.modulePath }}/fschat
+  wait: false
+  values:
+  - platformConfig:
+      imageRegistry: {{ .Values.registryDomain }}
+      imageRepositoryRelease: {{ .Values.registryRepository }}
+      imagePullPolicy: Always
+      imagePullSecret: {{ .Values.registrySecret }}
+    replicaCount: {{ default "2" .Values.customconfig.fschat.replicaCount }}
+    maas: 
+      ak: {{ .Values.customconfig.maas.ak }}
+      sk: {{ .Values.customconfig.maas.sk }}
+    embeddingModel:
+      path: {{ .Values.customconfig.embeddingModel.path }}
+      name: {{ .Values.customconfig.embeddingModel.name }}
+    llmModel:
+      enabled: {{ .Values.customconfig.llmModel.enabled }}
+      path: {{ .Values.customconfig.llmModel.path }}
+      name: {{ .Values.customconfig.llmModel.name }}
