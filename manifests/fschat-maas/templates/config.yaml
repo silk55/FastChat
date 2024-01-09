@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fs-config
+  namespace: {{ .Release.Namespace | quote }}
+data:
+  maas.json: |
+    {
+      "skylark-pro": {
+          "model_path": "volc_maas",
+          "host": "maas-api.ml-platform-cn-beijing.volces.com",
+          "ak": {{ .Values.maas.ak | quote }},
+          "sk": {{ .Values.maas.sk | quote }},
+          "context_length": 4096,
+          "model_names": "skylark-pro-public"
+       },
+      "skylark2-pro-4k": {
+          "model_path": "volc_maas",
+          "host": "maas-api.ml-platform-cn-beijing.volces.com",
+          "ak": {{ .Values.maas.ak | quote }},
+          "sk": {{ .Values.maas.sk | quote }},
+          "context_length": 4096,
+          "model_names": "skylark2-pro-4k"
+       },
+      "chatglm-6b-model": {
+          "model_path": "volc_maas",
+          "host": "maas-api.ml-platform-cn-beijing.volces.com",
+          "ak": {{ .Values.maas.ak | quote }},
+          "sk": {{ .Values.maas.sk | quote }},
+          "context_length": 4096,
+          "model_names": "chatglm-6b-model"
+       },
+      "skylark-lite-public": {
+          "model_path": "volc_maas",
+          "host": "maas-api.ml-platform-cn-beijing.volces.com",
+          "ak": {{ .Values.maas.ak | quote }},
+          "sk": {{ .Values.maas.sk | quote }},
+          "context_length": 4096,
+          "model_names": "skylark-lite-public"
+       },
+      "skylark-plus-public": {
+          "model_path": "volc_maas",
+          "host": "maas-api.ml-platform-cn-beijing.volces.com",
+          "ak": {{ .Values.maas.ak | quote }},
+          "sk": {{ .Values.maas.sk | quote }},
+          "context_length": 4096,
+          "model_names": "skylark-plus-public"
+       },
+      "skylark-chat": {
+          "model_path": "volc_maas",
+          "host": "maas-api.ml-platform-cn-beijing.volces.com",
+          "ak": {{ .Values.maas.ak | quote }},
+          "sk": {{ .Values.maas.sk | quote }},
+          "context_length": 4096,
+          "model_names": "skylark-chat"
+       }
+    }
