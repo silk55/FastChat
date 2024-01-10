@@ -1,0 +1,71 @@
+platformConfig:
+  ## Container registry for all images involved in the chart
+  imageRegistry: paas-tob-dev-cn-beijing.cr.volces.com
+  ## Container repository for platform components
+  imageRepositoryRelease: infcprelease
+  imageRepositoryLibrary: infcplibrary
+  ## Platform-wide image pull policy
+  imagePullPolicy: Always
+#  如果集群已经开启免密组件则不能注入
+  imagePullSecret: registry
+
+podSecurityContext:
+  fsGroup: 65534
+
+securityContext:
+  runAsUser: 65534  # nobody
+  runAsGroup: 65534 # nobody
+
+image:
+  name: fastchat
+  tag: v1.5.0
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: vke.node.gpu.schedule
+              operator: In
+              values:
+                - nvidia
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: vke.node.gpu.schedule
+              operator: In
+              values:
+                - nvidia
+
+replicaCount: 2
+
+maas:
+  ak: "123"
+  sk: "345"
+
+service:
+  port: 8000
+  type: ClusterIP
+
+embeddingModel:
+  path: "/model/bge-large-en-v1.5"
+  name: "bge-large-en-v1.5"
+
+llmModel:
+  path: "/model/bge-reranker-large"
+  name: "bge-reranker-large"
+
+manager:
+  port: 21001
+  address: http://fschat:21001
+
+worker:
+  port: 21016
+  address: http://fschat-worker-reranker-worker:21016
+
+tolerations:
+  - effect: NoExecute
+    key: vke.node.gpu.schedule
+    value: nvidia
+    operator: Equal

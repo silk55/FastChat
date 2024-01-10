@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "common.names.fullname" . }}
+  labels: 
+    {{- include "common.labels.standard" . | nindent 4 }}
+spec:
+  replicas: {{ default "1" .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "common.labels.matchLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.podAnnotations }}
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "common.labels.standard" . | nindent 8 }}
+    spec:
+      {{- with .Values.platformConfig.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      {{- if .Values.securityContext.enabled }}
+      securityContext:
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.podSecurityContext.fsGroup }}
+      {{- end }}
+      containers:
+        - name: fschat
+          image: {{ template "common.images.image" . }}
+          imagePullPolicy: {{ .Values.platformConfig.imagePullPolicy }}
+          env:
+            - name: "LLM_MODEL_NAME"
+              value: {{ .Values.llmModel.name }}
+            - name: "LLM_MODEL_PATH"
+              value: {{ .Values.llmModel.path }}
+            - name: "C_MODE"
+              value: "worker"
+            - name: "MANAGER_PORT"
+              value: {{ .Values.manager.port | quote }}
+            - name: "CONTROLLER_ADDRESS"
+              value: {{ .Values.manager.address }}
+            - name: "WORKER_ADDRESS"
+              value: {{ .Values.worker.address }}
+            - name: "WORKER_PORT"
+              value: {{ .Values.worker.port | quote }}
+          ports:
+            - name: worker
+              containerPort: {{ .Values.worker.port }}
+              protocol: TCP
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

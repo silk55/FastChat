@@ -1,0 +1,51 @@
+platformConfig:
+  ## Container registry for all images involved in the chart
+  imageRegistry: hub.byted.org
+  ## Container repository for platform components
+  imageRepositoryRelease: infcprelease
+  imageRepositoryLibrary: infcplibrary
+  ## Platform-wide image pull policy
+  imagePullPolicy: Always
+#  如果集群已经开启免密组件则不能注入
+  imagePullSecret: registry
+
+podSecurityContext:
+  fsGroup: 65534
+
+securityContext:
+  runAsUser: 65534  # nobody
+  runAsGroup: 65534 # nobody
+  
+replicaCount: 2
+
+image:
+  name: fs-llm-c
+  tag: v1.0.0
+
+maas:
+  ak: "123"
+  sk: "345"
+
+service:
+  port: 8000
+  type: ClusterIP
+
+embeddingModel:
+  path: "/model/bge-large-en-v1.5"
+  name: "bge-large-en-v1.5"
+
+llmModel:
+  enabled: true
+  path: "/model/chatglm2-6b"
+  name: "chatglm2-6b"
+
+manager:
+  port: 21001
+  address: http://fschat:21001
+
+worker:
+  port: 21011
+  address: http://fschat-worker:21011
+  affinity: {}
+
+

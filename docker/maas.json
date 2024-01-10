@@ -1,0 +1,11 @@
+{
+    "skylark-pro": {
+        "model_path": "volc_maas",
+        "host": "maas-api.ml-platform-cn-beijing.volces.com",
+        "ak": "",
+        "sk": "",
+        "context_length": 2048,
+        "model_names": "skylark-pro-public",
+        "conv_template": null
+    }
+}
