@@ -1455,9 +1455,9 @@ register_conv_template(
 )
 
 
-#yuan 2.0 template
-#reference:https://github.com/IEIT-Yuan/Yuan-2.0
-#reference:https://huggingface.co/IEITYuan
+# yuan 2.0 template
+# reference:https://github.com/IEIT-Yuan/Yuan-2.0
+# reference:https://huggingface.co/IEITYuan
 register_conv_template(
     Conversation(
         name="yuan",
@@ -1466,7 +1466,6 @@ register_conv_template(
         sep_style=SeparatorStyle.NO_COLON_SINGLE,
         sep="<sep>",
         stop_str="<eod>",
-
     )
 )
 
