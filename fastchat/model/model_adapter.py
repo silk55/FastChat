@@ -2148,6 +2148,7 @@ class DeepseekChatAdapter(BaseModelAdapter):
     def get_default_conv_template(self, model_path: str) -> Conversation:
         return get_conv_template("deepseek-chat")
 
+
 class Yuan2Adapter(BaseModelAdapter):
     """The model adapter for Yuan2.0"""
 
@@ -2161,21 +2162,37 @@ class Yuan2Adapter(BaseModelAdapter):
             model_path,
             add_eos_token=False,
             add_bos_token=False,
-            eos_token='<eod>',
-            eod_token='<eod>',
-            sep_token='<sep>',
-            revision = revision,
+            eos_token="<eod>",
+            eod_token="<eod>",
+            sep_token="<sep>",
+            revision=revision,
         )
         tokenizer.add_tokens(
-            ['<sep>', '<pad>', '<mask>', '<predict>', '<FIM_SUFFIX>', '<FIM_PREFIX>', '<FIM_MIDDLE>', '<commit_before>',
-             '<commit_msg>', '<commit_after>', '<jupyter_start>', '<jupyter_text>', '<jupyter_code>',
-             '<jupyter_output>', '<empty_output>'], special_tokens=True)
+            [
+                "<sep>",
+                "<pad>",
+                "<mask>",
+                "<predict>",
+                "<FIM_SUFFIX>",
+                "<FIM_PREFIX>",
+                "<FIM_MIDDLE>",
+                "<commit_before>",
+                "<commit_msg>",
+                "<commit_after>",
+                "<jupyter_start>",
+                "<jupyter_text>",
+                "<jupyter_code>",
+                "<jupyter_output>",
+                "<empty_output>",
+            ],
+            special_tokens=True,
+        )
 
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
             # device_map='auto',
             trust_remote_code=True,
-            **from_pretrained_kwargs
+            **from_pretrained_kwargs,
         )
         return model, tokenizer
 
