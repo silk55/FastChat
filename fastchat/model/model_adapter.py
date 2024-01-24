@@ -2230,6 +2230,20 @@ class SolarAdapter(BaseModelAdapter):
         return get_conv_template("solar")
 
 
+class LlavaAdapter(BaseModelAdapter):
+    """The model adapter for liuhaotian/llava-v1.5 series of models"""
+
+    def load_model(self, model_path: str, from_pretrained_kwargs: dict):
+        # TODO(chris): Implement huggingface-compatible load_model
+        pass
+
+    def match(self, model_path: str):
+        return "llava" in model_path.lower()
+
+    def get_default_conv_template(self, model_path: str) -> Conversation:
+        return get_conv_template("vicuna_v1.1")
+
+      
 class YuanAdapter(BaseModelAdapter):
     """The model adapter for Yuan"""
 
@@ -2352,6 +2366,7 @@ register_model_adapter(Yuan2Adapter)
 register_model_adapter(MetaMathAdapter)
 register_model_adapter(BagelAdapter)
 register_model_adapter(SolarAdapter)
+register_model_adapter(LlavaAdapter)
 register_model_adapter(YuanAdapter)
 
 # After all adapters, try the default base adapter.
