@@ -32,7 +32,6 @@ from fastchat.utils import (
     str_to_torch_dtype,
 )
 
-
 worker_id = str(uuid.uuid4())[:8]
 logger = build_logger("model_worker", f"model_worker_{worker_id}.log")
 
@@ -50,6 +49,7 @@ class ModelWorker(BaseModelWorker):
         device: str,
         num_gpus: int,
         max_gpu_memory: str,
+        revision: str = None,
         dtype: Optional[torch.dtype] = None,
         load_8bit: bool = False,
         cpu_offloading: bool = False,
@@ -77,6 +77,7 @@ class ModelWorker(BaseModelWorker):
         logger.info(f"Loading the model {self.model_names} on worker {worker_id} ...")
         self.model, self.tokenizer = load_model(
             model_path,
+            revision=revision,
             device=device,
             num_gpus=num_gpus,
             max_gpu_memory=max_gpu_memory,
@@ -102,6 +103,10 @@ class ModelWorker(BaseModelWorker):
             self.init_heart_beat()
 
     def generate_stream_gate(self, params):
+        if self.device == "npu":
+            import torch_npu
+
+            torch_npu.npu.set_device("npu:0")
         self.call_ct += 1
 
         try:
@@ -160,9 +165,13 @@ class ModelWorker(BaseModelWorker):
                 data = model_output.hidden_states[-1].transpose(0, 1)
             else:
                 data = model_output.hidden_states[-1]
-        mask = attention_mask.unsqueeze(-1).expand(data.size()).float()
-        masked_embeddings = data * mask
-        sum_embeddings = torch.sum(masked_embeddings, dim=1)
+
+        if hasattr(self.model, "use_cls_pooling") and self.model.use_cls_pooling:
+            sum_embeddings = data[:, 0]
+        else:
+            mask = attention_mask.unsqueeze(-1).expand(data.size()).float()
+            masked_embeddings = data * mask
+            sum_embeddings = torch.sum(masked_embeddings, dim=1)
         token_num = torch.sum(attention_mask).item()
 
         return sum_embeddings, token_num
@@ -207,10 +216,14 @@ class ModelWorker(BaseModelWorker):
             base64_encode = params.get("encoding_format", None)
 
             if self.embed_in_truncate:
-                chunk_embeddings, token_num = self.__process_embed_chunk(
+                embedding, token_num = self.__process_embed_chunk(
                     input_ids, attention_mask, **model_type_dict
                 )
-                embedding = chunk_embeddings / token_num
+                if (
+                    not hasattr(self.model, "use_cls_pooling")
+                    or not self.model.use_cls_pooling
+                ):
+                    embedding = embedding / token_num
                 normalized_embeddings = F.normalize(embedding, p=2, dim=1)
                 ret["token_num"] = token_num
             else:
@@ -220,10 +233,41 @@ class ModelWorker(BaseModelWorker):
                     chunk_input_ids = input_ids[:, i : i + self.context_len]
                     chunk_attention_mask = attention_mask[:, i : i + self.context_len]
 
+                    # add cls token and mask to get cls embedding
+                    if (
+                        hasattr(self.model, "use_cls_pooling")
+                        and self.model.use_cls_pooling
+                    ):
+                        cls_tokens = (
+                            torch.zeros(
+                                (chunk_input_ids.size(0), 1),
+                                dtype=chunk_input_ids.dtype,
+                                device=chunk_input_ids.device,
+                            )
+                            + tokenizer.cls_token_id
+                        )
+                        chunk_input_ids = torch.cat(
+                            [cls_tokens, chunk_input_ids], dim=-1
+                        )
+                        mask = torch.ones(
+                            (chunk_attention_mask.size(0), 1),
+                            dtype=chunk_attention_mask.dtype,
+                            device=chunk_attention_mask.device,
+                        )
+                        chunk_attention_mask = torch.cat(
+                            [mask, chunk_attention_mask], dim=-1
+                        )
+
                     chunk_embeddings, token_num = self.__process_embed_chunk(
                         chunk_input_ids, chunk_attention_mask, **model_type_dict
                     )
-                    all_embeddings.append(chunk_embeddings)
+                    if (
+                        hasattr(self.model, "use_cls_pooling")
+                        and self.model.use_cls_pooling
+                    ):
+                        all_embeddings.append(chunk_embeddings * token_num)
+                    else:
+                        all_embeddings.append(chunk_embeddings)
                     all_token_num += token_num
 
                 all_embeddings_tensor = torch.stack(all_embeddings)
@@ -369,6 +413,7 @@ def create_model_worker():
         exllama_config = ExllamaConfig(
             max_seq_len=args.exllama_max_seq_len,
             gpu_split=args.exllama_gpu_split,
+            cache_8bit=args.exllama_cache_8bit,
         )
     else:
         exllama_config = None
@@ -390,6 +435,7 @@ def create_model_worker():
         args.model_path,
         args.model_names,
         args.limit_worker_concurrency,
+        revision=args.revision,
         no_register=args.no_register,
         device=args.device,
         num_gpus=args.num_gpus,

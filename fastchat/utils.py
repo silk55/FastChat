@@ -151,6 +151,8 @@ def oai_moderation(text):
 
     openai.api_base = "https://api.openai.com/v1"
     openai.api_key = os.environ["OPENAI_API_KEY"]
+    openai.api_type = "open_ai"
+    openai.api_version = None
 
     MAX_RETRY = 3
     for i in range(MAX_RETRY):
@@ -311,9 +313,9 @@ def is_sentence_complete(output: str):
 # NOTE: The ordering here is important.  Some models have two of these and we
 # have a preference for which value gets used.
 SEQUENCE_LENGTH_KEYS = [
+    "max_position_embeddings",
     "max_sequence_length",
     "seq_length",
-    "max_position_embeddings",
     "max_seq_len",
     "model_max_length",
 ]
