@@ -48,6 +48,7 @@ app = FastAPI()
 # reference to
 def get_gen_kwargs(
     params,
+    endpoint_id: str = None,
     seed: Optional[int] = None,
 ):
     stop = params.get("stop", None)
@@ -60,13 +61,20 @@ def get_gen_kwargs(
     # prompt is not necessary, here we just using conv from base worker
     prompt = params["prompt"]
 
+    top_k = params.get('top_k', 0)
+    # maas need to ensure it >0 <100 
+    top_k = max(0, min(top_k, 100))
+    
     reqC = ModelRequest(model_name=params["model"],
                         temperature=params["temperature"],
                         top_p=params["top_p"],
+                        endpoint_id=endpoint_id,
                         max_new_tokens=params["max_new_tokens"],
+                        top_k=top_k,
+                        functions=params.get("functions", None)
                         )
 
-    reqC.parse_promt(prompt)
+    reqC.parse_prompt(prompt)
     # document: "https://www.volcengine.com/docs/82379/1099475"
     req = reqC.get_request()
     # no using
@@ -81,6 +89,7 @@ def get_gen_kwargs(
         "top_k": params.get("top_k", None),
         "seed": seed,
         "req": req,
+        "functions": params.get("functions", None)
     }
     return gen_kwargs
 
@@ -93,7 +102,7 @@ def could_be_stop(text, stop):
 
 
 class ModelRequest:
-    def __init__(self, model_name='skylark-pro-public', max_new_tokens=15, temperature=0.5, top_p=0.9, top_k=0):
+    def __init__(self, model_name='skylark2-pro-4k',endpoint_id=None, max_new_tokens=15, temperature=0.5, top_p=0.9, top_k=0, functions=None):
         self.req = {
             "model": {
                 "name": model_name,
@@ -104,8 +113,13 @@ class ModelRequest:
                 "top_p": top_p, 
                 "top_k": top_k, 
             },
-            "messages": []
+            "messages": [],
         }
+        if endpoint_id and len(endpoint_id):
+            self.req["model"]["endpoint_id"] = endpoint_id
+        if functions and len(functions):
+            self.req['functions'] = functions
+            
 
     def add_message(self, role, content):
         self.req["messages"].append({
@@ -122,7 +136,7 @@ class ModelRequest:
         return self.req
 
     # hackable parser
-    def parse_promt(self, prompt):
+    def parse_prompt(self, prompt):
         default_system = 'SYSTEM*+-'
         default_user = 'USER*+-'
         default_assistant = 'ASSISTANT*+-'
@@ -159,6 +173,7 @@ class VolcMaasApiWorker(BaseModelWorker):
         no_register: bool,
         conv_template: Optional[str] = None,
         seed: Optional[int] = None,
+        endpoint_id: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(
@@ -178,9 +193,10 @@ class VolcMaasApiWorker(BaseModelWorker):
         self.context_len = context_length
         self.seed = seed
         self.region = region
+        self.endpoint_id = endpoint_id
 
         logger.info(
-            f"Connecting with huggingface api {self.model_path} as {self.model_names} on worker {worker_id} ..."
+            f"Connecting with volc api {self.model_path} as {self.model_names} on worker {worker_id} ..."
         )
 
         if not no_register:
@@ -198,11 +214,10 @@ class VolcMaasApiWorker(BaseModelWorker):
     def generate_stream_gate(self, params):
         self.call_ct += 1
 
-        gen_kwargs = get_gen_kwargs(params, seed=self.seed)
+        gen_kwargs = get_gen_kwargs(params,endpoint_id=self.endpoint_id,seed=self.seed)
         stop = gen_kwargs["stop_sequences"]
-        pprint(gen_kwargs["req"])
 
-        logger.info(f"gen_kwargs: {gen_kwargs}")
+        logger.info(f"request: {gen_kwargs['req']}")
 
         try:
             host = default_host if self.host == "" else self.host
@@ -215,11 +230,14 @@ class VolcMaasApiWorker(BaseModelWorker):
             res = client.stream_chat(gen_kwargs["req"])
 
             reason = None
+            function_call = None
             text = ""
             for chunk in res:
-                if chunk.choice is not None and chunk.choice.message is not None and chunk.choice.message.content is not None:
-                    text += chunk.choice.message.content
-
+                if chunk.choice is not None and chunk.choice.message is not None:
+                    if chunk.choice.message.content is not None:
+                        text += chunk.choice.message.content
+                    if not function_call and chunk.choice.message.function_call is not None:
+                        function_call = chunk.choice.message.function_call
                 s = next((x for x in stop if text.endswith(x)), None)
                 if s is not None:
                     text = text[: -len(s)]
@@ -232,11 +250,12 @@ class VolcMaasApiWorker(BaseModelWorker):
                     chunk.choice.finish_reason is not None
                 ):
                     reason = chunk.choice.finish_reason
-                if reason not in ["stop", "length"]:
+                if reason not in ["stop", "length","function_call"]:
                     reason = None
-                # todo hackacble 
+                # the return of usage is not stable, so we may need a gpt tokenizer to gen it again 
                 ret = {
                     "text": text,
+                    "function_call": function_call,
                     "error_code": 0,
                     "finish_reason": reason,
                     "usage": chunk.usage,
@@ -390,6 +409,7 @@ def create_volc_maas_api_worker():
     model_names_list = []
     conv_template_list = []
     region_list = []
+    endpoint_id_list = []
 
     for m in model_info:
         model_path_list.append(model_info[m]["model_path"])
@@ -398,6 +418,8 @@ def create_volc_maas_api_worker():
         sk_list.append(model_info[m]["sk"])
         t_region = model_info[m].get("region","")
         region_list.append(t_region)
+        t_endpoint = model_info[m].get("endpoint_id","")
+        endpoint_id_list.append(t_endpoint)
 
         context_length = model_info[m]["context_length"]
         model_names = model_info[m].get("model_names", [m.split("/")[-1]])
@@ -423,6 +445,7 @@ def create_volc_maas_api_worker():
         sk,
         region,
         context_length,
+        endpoint_id,
     ) in zip(
         model_names_list,
         conv_template_list,
@@ -432,6 +455,7 @@ def create_volc_maas_api_worker():
         sk_list,
         region_list,
         context_length_list,
+        endpoint_id_list
     ):
         m = VolcMaasApiWorker(
             args.controller_address,
@@ -448,6 +472,7 @@ def create_volc_maas_api_worker():
             no_register=args.no_register,
             conv_template=conv_template,
             seed=args.seed,
+            endpoint_id=endpoint_id,
         )
         workers.append(m)
         for name in model_names:

@@ -72,17 +72,19 @@ class ChatCompletionRequest(BaseModel):
     presence_penalty: Optional[float] = 0.0
     frequency_penalty: Optional[float] = 0.0
     user: Optional[str] = None
+    functions: Optional[List[Any]] = None
 
 
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: Optional[str] = None
+    function_call: Optional[Dict[str, Any]] = None
 
 
 class ChatCompletionResponseChoice(BaseModel):
     index: int
     message: ChatMessage
-    finish_reason: Optional[Literal["stop", "length"]] = None
+    finish_reason: Optional[Literal["stop", "length", "function_call"]] = None
 
 
 class ChatCompletionResponse(BaseModel):
@@ -91,18 +93,24 @@ class ChatCompletionResponse(BaseModel):
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[ChatCompletionResponseChoice]
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
+
+
+class ChoiceDeltaFunctionCall(BaseModel):
+    arguments: Optional[str] = None
+    name: Optional[str] = None
 
 
 class DeltaMessage(BaseModel):
     role: Optional[str] = None
     content: Optional[str] = None
+    function_call: Optional[ChoiceDeltaFunctionCall] = None
 
 
 class ChatCompletionResponseStreamChoice(BaseModel):
     index: int
     delta: DeltaMessage
-    finish_reason: Optional[Literal["stop", "length"]] = None
+    finish_reason: Optional[Literal["stop", "length", "function_call"]] = None
 
 
 class ChatCompletionStreamResponse(BaseModel):
