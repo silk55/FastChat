@@ -44,6 +44,7 @@ from fastchat.protocol.openai_api_protocol import (
     CompletionResponseChoice,
     DeltaMessage,
     CompletionResponseStreamChoice,
+    ChoiceDeltaFunctionCall,
     CompletionStreamResponse,
     EmbeddingsRequest,
     EmbeddingsResponse,
@@ -422,6 +423,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
         echo=False,
         stop=request.stop,
     )
+    gen_params["functions"] = request.functions
 
     max_new_tokens, error_check_ret = await check_length(
         request,
@@ -457,11 +459,11 @@ async def create_chat_completion(request: ChatCompletionRequest):
         choices.append(
             ChatCompletionResponseChoice(
                 index=i,
-                message=ChatMessage(role="assistant", content=content["text"]),
+                message=ChatMessage(role="assistant", content=content["text"], function_call=content.get("function_call",None)),
                 finish_reason=content.get("finish_reason", "stop"),
             )
         )
-        if "usage" in content:
+        if "usage" in content and content["usage"]:
             task_usage = UsageInfo.parse_obj(content["usage"])
             for usage_key, usage_value in task_usage.dict().items():
                 setattr(usage, usage_key, getattr(usage, usage_key) + usage_value)
@@ -491,31 +493,57 @@ async def chat_completion_stream_generator(
         yield f"data: {chunk.json(exclude_unset=True, ensure_ascii=False)}\n\n"
 
         previous_text = ""
+        previous_function_arguments = ""
+        previous_function_name = ""
         async for content in generate_completion_stream(gen_params, worker_addr):
             if content["error_code"] != 0:
                 yield f"data: {json.dumps(content, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
-            decoded_unicode = content["text"].replace("\ufffd", "")
-            delta_text = decoded_unicode[len(previous_text) :]
-            previous_text = (
-                decoded_unicode
-                if len(decoded_unicode) > len(previous_text)
-                else previous_text
-            )
-
-            if len(delta_text) == 0:
-                delta_text = None
-            choice_data = ChatCompletionResponseStreamChoice(
-                index=i,
-                delta=DeltaMessage(content=delta_text),
-                finish_reason=content.get("finish_reason", None),
-            )
+            def gen_generate(content: str, pre_content: str):
+                decoded_unicode = content.replace("\ufffd", "")
+                delta_text = decoded_unicode[len(pre_content) :]
+                pre_content = (
+                    decoded_unicode
+                    if len(decoded_unicode) > len(pre_content)
+                    else pre_content
+                )
+                if len(delta_text) == 0:
+                    delta_text = None   
+                return delta_text,pre_content
+            
+            delta_text,previous_text = gen_generate(content["text"],previous_text)       
+             
+            function_call = content["function_call"]
+            if function_call:
+                delta_function_call_name, previous_function_name = gen_generate(function_call['name'], previous_function_name)
+                delta_function_call_arguments, previous_function_arguments = gen_generate(function_call['arguments'], previous_function_arguments)
+                choice_data = ChatCompletionResponseStreamChoice(
+                    index=i,
+                    delta=DeltaMessage(
+                            content=delta_text,
+                            function_call=ChoiceDeltaFunctionCall(
+                                arguments=delta_function_call_arguments,
+                                name=delta_function_call_name,
+                            ),
+                        ),
+                    finish_reason=content.get("finish_reason", None),
+                )
+            else:
+                choice_data = ChatCompletionResponseStreamChoice(
+                    index=i,
+                    delta=DeltaMessage(
+                        content=delta_text
+                        ),
+                    finish_reason=content.get("finish_reason", None),
+                )
+                
             chunk = ChatCompletionStreamResponse(
                 id=id, choices=[choice_data], model=model_name
             )
             if delta_text is None:
-                if content.get("finish_reason", None) is not None:
+                # because skylark not return finish_reason stablely so need an addition judge by function call
+                if content.get("finish_reason", None) is not None or content.get("function_call") is not None:
                     finish_stream_events.append(chunk)
                 continue
             yield f"data: {chunk.json(exclude_unset=True, ensure_ascii=False)}\n\n"
