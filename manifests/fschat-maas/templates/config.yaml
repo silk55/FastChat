@@ -6,13 +6,22 @@ metadata:
 data:
   maas.json: |
     {
-      "skylark-pro": {
+      "skylark2-pro-32k": {
+          "model_path": "volc_maas",
+          "host": "maas-api.ml-platform-cn-beijing.volces.com",
+          "ak": {{ .Values.maas.ak | quote }},
+          "sk": {{ .Values.maas.sk | quote }},
+          "context_length": 32000,
+          "model_names": "skylark2-pro-32k"
+       },
+      "skylark-function-call": {
           "model_path": "volc_maas",
           "host": "maas-api.ml-platform-cn-beijing.volces.com",
           "ak": {{ .Values.maas.ak | quote }},
           "sk": {{ .Values.maas.sk | quote }},
           "context_length": 4096,
-          "model_names": "skylark-pro-public"
+          "model_names": "skylark-function-call",
+          "endpoint_id": "mse-20231227193502-58xhk"
        },
       "skylark2-pro-4k": {
           "model_path": "volc_maas",

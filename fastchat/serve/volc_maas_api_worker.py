@@ -121,11 +121,17 @@ class ModelRequest:
             self.req['functions'] = functions
             
 
-    def add_message(self, role, content):
+    def add_message(self, role, content, name = None, function_call = None):
+        if isinstance(content, list):
+            content = " ".join(map(str, content))
         self.req["messages"].append({
             "role": role,
             "content": content,
         })
+        if name:
+            self.req["messages"][-1]['name'] = name
+        if function_call:
+            self.req["messages"][-1]['function_call'] = function_call
 
     def append_last(self, content):
         if len(self.req["messages"]) == 0:
@@ -148,7 +154,16 @@ class ModelRequest:
                 if part['role'] == default_user:
                     self.add_message(ChatRole.USER, part['content'])
                 if part['role'] == default_assistant:
-                    self.add_message(ChatRole.ASSISTANT,part['content'])
+                    self.add_message(ChatRole.ASSISTANT,part['content'],function_call=part.get("function_call", None))
+                if part['role'] == 'function':
+                    # for volc, when get function call we need also add assitant message before
+                    if part.get('content',None) and part.get('name',None):
+                        if len(self.req['messages']) > 0 and self.req['messages'][-1]['role'] != ChatRole.ASSISTANT:
+                            self.add_message(ChatRole.ASSISTANT, "", function_call={
+                                    "name": part['name'],
+                                })
+                        self.add_message(ChatRole.FUNCTION, part['content'], name=part['name'])
+                        
         except json.JSONDecodeError as e:
             self.add_message(ChatRole.USER,prompt)
         # parse_failed, directly do
@@ -237,7 +252,9 @@ class VolcMaasApiWorker(BaseModelWorker):
                     if chunk.choice.message.content is not None:
                         text += chunk.choice.message.content
                     if not function_call and chunk.choice.message.function_call is not None:
+                        # for skylark we get function call in single response while it is finish
                         function_call = chunk.choice.message.function_call
+                        reason = "stop"
                 s = next((x for x in stop if text.endswith(x)), None)
                 if s is not None:
                     text = text[: -len(s)]

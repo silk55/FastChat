@@ -313,7 +313,9 @@ async def get_gen_params(
                 else:
                     conv.append_message(conv.roles[0], message["content"])
             elif msg_role == "assistant":
-                conv.append_message(conv.roles[1], message["content"])
+                conv.append_message(conv.roles[1], message["content"], function_call=message.get("function_call", None))
+            elif msg_role == "function":
+                conv.append_message("function", message["content"], name=message["name"])
             else:
                 raise ValueError(f"Unknown role: {msg_role}")
 
@@ -400,6 +402,9 @@ async def show_available_models():
 
 @app.post("/v1/chat/completions", dependencies=[Depends(check_api_key)])
 async def create_chat_completion(request: ChatCompletionRequest):
+    from pprint import pprint
+    pprint("111111")
+    pprint(request.messages)
     """Creates a completion for the chat message"""
     error_check_ret = await check_model(request)
     if error_check_ret is not None:
@@ -467,7 +472,6 @@ async def create_chat_completion(request: ChatCompletionRequest):
             task_usage = UsageInfo.parse_obj(content["usage"])
             for usage_key, usage_value in task_usage.dict().items():
                 setattr(usage, usage_key, getattr(usage, usage_key) + usage_value)
-
     return ChatCompletionResponse(model=request.model, choices=choices, usage=usage)
 
 
@@ -496,6 +500,8 @@ async def chat_completion_stream_generator(
         previous_function_arguments = ""
         previous_function_name = ""
         async for content in generate_completion_stream(gen_params, worker_addr):
+            from pprint import pprint
+            pprint(content)
             if content["error_code"] != 0:
                 yield f"data: {json.dumps(content, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
