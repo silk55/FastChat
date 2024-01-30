@@ -70,7 +70,15 @@ class Conversation:
                 prompt_list.append({"role": self.system_template , "content": self.system_message})
             for role, message in self.messages:
                 if message:
-                    prompt_list.append({"role": role, "content": message})
+                    if isinstance(message,dict):
+                        prompt_list.append({
+                            "role": role, 
+                            "content": message.get("content",""),
+                            "function_call": message.get("function_call", None),
+                            "name": message.get("name", None)
+                            })
+                    else:
+                        prompt_list.append({"role": role, "content": message})
             return json.dumps(prompt_list)
         if self.sep_style == SeparatorStyle.ADD_COLON_SINGLE:
             ret = system_prompt + self.sep
@@ -287,9 +295,16 @@ class Conversation:
         """Set the system message."""
         self.system_message = system_message
 
-    def append_message(self, role: str, message: str):
+    def append_message(self, role: str, message: str, function_call = None, name = None):
         """Append a new message."""
         self.messages.append([role, message])
+        if name or function_call:
+            message = self.messages[-1].pop()
+            self.messages[-1].append({
+                "content": message,
+                "function_call": function_call,
+                "name": name,
+            })
 
     def update_last_message(self, message: str):
         """Update the last output.
