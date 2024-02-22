@@ -48,6 +48,7 @@ app = FastAPI()
 # reference to
 def get_gen_kwargs(
     params,
+    version: str = None,
     endpoint_id: str = None,
     seed: Optional[int] = None,
 ):
@@ -66,6 +67,7 @@ def get_gen_kwargs(
     top_k = max(0, min(top_k, 100))
     
     reqC = ModelRequest(model_name=params["model"],
+                        version=version,
                         temperature=params["temperature"],
                         top_p=params["top_p"],
                         endpoint_id=endpoint_id,
@@ -102,10 +104,10 @@ def could_be_stop(text, stop):
 
 
 class ModelRequest:
-    def __init__(self, model_name='skylark2-pro-4k',endpoint_id=None, max_new_tokens=15, temperature=0.5, top_p=0.9, top_k=0, functions=None):
+    def __init__(self, model_name='skylark2-pro-4k',version=None,endpoint_id=None, max_new_tokens=15, temperature=0.5, top_p=0.9, top_k=0, functions=None):
         self.req = {
             "model": {
-                "name": model_name,
+                "name": model_name
             },
             "parameters": {
                 "max_new_tokens": max_new_tokens,  
@@ -115,6 +117,8 @@ class ModelRequest:
             },
             "messages": [],
         }
+        if version and len(version):
+            self.req['model']['version'] = version
         if endpoint_id and len(endpoint_id):
             self.req["model"]["endpoint_id"] = endpoint_id
         if functions and len(functions):
@@ -188,6 +192,7 @@ class VolcMaasApiWorker(BaseModelWorker):
         no_register: bool,
         conv_template: Optional[str] = None,
         seed: Optional[int] = None,
+        version: Optional[str] = None,
         endpoint_id: Optional[str] = None,
         **kwargs,
     ):
@@ -208,6 +213,7 @@ class VolcMaasApiWorker(BaseModelWorker):
         self.context_len = context_length
         self.seed = seed
         self.region = region
+        self.version = version
         self.endpoint_id = endpoint_id
 
         logger.info(
@@ -229,7 +235,7 @@ class VolcMaasApiWorker(BaseModelWorker):
     def generate_stream_gate(self, params):
         self.call_ct += 1
 
-        gen_kwargs = get_gen_kwargs(params,endpoint_id=self.endpoint_id,seed=self.seed)
+        gen_kwargs = get_gen_kwargs(params,version=self.version,endpoint_id=self.endpoint_id,seed=self.seed)
         stop = gen_kwargs["stop_sequences"]
 
         logger.info(f"request: {gen_kwargs['req']}")
@@ -426,6 +432,7 @@ def create_volc_maas_api_worker():
     model_names_list = []
     conv_template_list = []
     region_list = []
+    version_list = []
     endpoint_id_list = []
 
     for m in model_info:
@@ -435,6 +442,8 @@ def create_volc_maas_api_worker():
         sk_list.append(model_info[m]["sk"])
         t_region = model_info[m].get("region","")
         region_list.append(t_region)
+        t_version = model_info[m].get("version","")
+        version_list.append(t_version)
         t_endpoint = model_info[m].get("endpoint_id","")
         endpoint_id_list.append(t_endpoint)
 
@@ -462,6 +471,7 @@ def create_volc_maas_api_worker():
         sk,
         region,
         context_length,
+        version,
         endpoint_id,
     ) in zip(
         model_names_list,
@@ -472,6 +482,7 @@ def create_volc_maas_api_worker():
         sk_list,
         region_list,
         context_length_list,
+        version_list,
         endpoint_id_list
     ):
         m = VolcMaasApiWorker(
@@ -489,6 +500,7 @@ def create_volc_maas_api_worker():
             no_register=args.no_register,
             conv_template=conv_template,
             seed=args.seed,
+            version=version,
             endpoint_id=endpoint_id,
         )
         workers.append(m)
