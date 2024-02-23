@@ -55,10 +55,13 @@ see detailed serve/launch_all_serve.py
         "ak": "",
         "sk": "",
         "context_length": 2048,
-        "model_names": "skylark-pro-public",
+        "model_name": "skylark-pro-public",
+        "version": "",
+        "endpoint_id": "",
         "conv_template": null
     }
 }
 ```
+we using key as model id as request for fschat, and model_name + version or endpoint_id as request for volc
 
 you can add several models to a single json.

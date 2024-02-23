@@ -182,13 +182,14 @@ class VolcMaasApiWorker(BaseModelWorker):
         controller_addr: str,
         worker_addr: str,
         worker_id: str,
+        model_key: str,
         model_path: str,
         host: str,
         ak: str,
         sk: str,
         region: str,
         context_length: int,
-        model_names: List[str],
+        model_name: str,
         limit_worker_concurrency: int,
         no_register: bool,
         conv_template: Optional[str] = None,
@@ -202,7 +203,7 @@ class VolcMaasApiWorker(BaseModelWorker):
             worker_addr,
             worker_id,
             model_path,
-            model_names,
+            [model_key],
             limit_worker_concurrency,
             conv_template=conv_template,
         )
@@ -216,9 +217,11 @@ class VolcMaasApiWorker(BaseModelWorker):
         self.region = region
         self.version = version
         self.endpoint_id = endpoint_id
+        self.model_name = model_name
+        self.model_key = model_key
 
         logger.info(
-            f"Connecting with volc api {self.model_path} as {self.model_names} on worker {worker_id} ..."
+            f"Connecting with volc api name: {self.model_name}| version: {self.version}| endpoint_id: {self.endpoint_id} as {self.model_key} on worker {worker_id} ... "
         )
 
         if not no_register:
@@ -237,7 +240,7 @@ class VolcMaasApiWorker(BaseModelWorker):
         self.call_ct += 1
 
         # self.model_name for inner use to distinguish between different versions , each correspond to one model_path + version or endpoint_id
-        gen_kwargs = get_gen_kwargs(params,model_name=self.model_path,version=self.version,endpoint_id=self.endpoint_id,seed=self.seed)
+        gen_kwargs = get_gen_kwargs(params,model_name=self.model_name,version=self.version,endpoint_id=self.endpoint_id,seed=self.seed)
         stop = gen_kwargs["stop_sequences"]
 
         logger.info(f"request: {gen_kwargs['req']}")
@@ -426,18 +429,20 @@ def create_volc_maas_api_worker():
 
     logger.info(f"args: {args}")
 
+    model_key_list = []
     model_path_list = []
     host_list = []
     ak_list = []
     sk_list = []
     context_length_list = []
-    model_names_list = []
+    model_name_list = []
     conv_template_list = []
     region_list = []
     version_list = []
     endpoint_id_list = []
 
     for m in model_info:
+        model_key_list.append(m)
         model_path_list.append(model_info[m]["model_path"])
         host_list.append(model_info[m]["host"])
         ak_list.append(model_info[m]["ak"])
@@ -450,22 +455,21 @@ def create_volc_maas_api_worker():
         endpoint_id_list.append(t_endpoint)
 
         context_length = model_info[m]["context_length"]
-        model_names = model_info[m].get("model_names", [m.split("/")[-1]])
-        if isinstance(model_names, str):
-            model_names = [model_names]
+        model_name = model_info[m].get("model_name", [m.split("/")[-1]])
         conv_template = model_info[m].get("conv_template", None)
 
         context_length_list.append(context_length)
-        model_names_list.append(model_names)
+        model_name_list.append(model_name)
         conv_template_list.append(conv_template)
 
     logger.info(f"Model paths: {model_path_list}")
     logger.info(f"Context lengths: {context_length_list}")
-    logger.info(f"Model names: {model_names_list}")
+    logger.info(f"Model names: {model_name_list}")
     logger.info(f"Conv templates: {conv_template_list}")
 
     for (
-        model_names,
+        model_key,
+        model_name,
         conv_template,
         model_path,
         host,
@@ -476,7 +480,8 @@ def create_volc_maas_api_worker():
         version,
         endpoint_id,
     ) in zip(
-        model_names_list,
+        model_key_list,
+        model_name_list,
         conv_template_list,
         model_path_list,
         host_list,
@@ -491,13 +496,14 @@ def create_volc_maas_api_worker():
             args.controller_address,
             args.worker_address,
             worker_id,
+            model_key,
             model_path,
             host,
             ak,
             sk,
             region,
             context_length,
-            model_names,
+            model_name,
             args.limit_worker_concurrency,
             no_register=args.no_register,
             conv_template=conv_template,
@@ -506,7 +512,7 @@ def create_volc_maas_api_worker():
             endpoint_id=endpoint_id,
         )
         workers.append(m)
-        for name in model_names:
+        for name in model_key_list:
             worker_map[name] = m
 
     # register all the models
@@ -515,7 +521,7 @@ def create_volc_maas_api_worker():
         "worker_name": workers[0].worker_addr,
         "check_heart_beat": not args.no_register,
         "worker_status": {
-            "model_names": [m for w in workers for m in w.model_names],
+            "model_names": [m for w in workers for m in [w.model_key]],
             "speed": 1,
             "queue_length": sum([w.get_queue_length() for w in workers]),
         },
