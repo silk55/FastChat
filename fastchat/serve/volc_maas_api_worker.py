@@ -48,6 +48,7 @@ app = FastAPI()
 # reference to
 def get_gen_kwargs(
     params,
+    model_name: str = "skylark2-pro-4k",
     version: str = None,
     endpoint_id: str = None,
     seed: Optional[int] = None,
@@ -66,7 +67,7 @@ def get_gen_kwargs(
     # maas need to ensure it >0 <100 
     top_k = max(0, min(top_k, 100))
     
-    reqC = ModelRequest(model_name=params["model"],
+    reqC = ModelRequest(model_name=model_name,
                         version=version,
                         temperature=params["temperature"],
                         top_p=params["top_p"],
@@ -235,7 +236,8 @@ class VolcMaasApiWorker(BaseModelWorker):
     def generate_stream_gate(self, params):
         self.call_ct += 1
 
-        gen_kwargs = get_gen_kwargs(params,version=self.version,endpoint_id=self.endpoint_id,seed=self.seed)
+        # self.model_name for inner use to distinguish between different versions , each correspond to one model_path + version or endpoint_id
+        gen_kwargs = get_gen_kwargs(params,model_name=self.model_path,version=self.version,endpoint_id=self.endpoint_id,seed=self.seed)
         stop = gen_kwargs["stop_sequences"]
 
         logger.info(f"request: {gen_kwargs['req']}")
