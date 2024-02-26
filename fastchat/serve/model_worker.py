@@ -226,6 +226,49 @@ class ModelWorker(BaseModelWorker):
                     embedding = embedding / token_num
                 normalized_embeddings = F.normalize(embedding, p=2, dim=1)
                 ret["token_num"] = token_num
+            elif (
+                  hasattr(self.model, "use_cls_pooling")
+                  and self.model.use_cls_pooling
+            ):
+                all_embeddings = []
+                all_token_num = 0
+                # ignore the first cls
+                for i in range(1, input_ids.size(1), self.context_len-1):
+                    chunk_input_ids = input_ids[:, i : i + self.context_len-1]
+                    chunk_attention_mask = attention_mask[:, i : i + self.context_len-1]
+
+                    cls_tokens = (
+                        torch.zeros(
+                            (chunk_input_ids.size(0), 1),
+                            dtype=chunk_input_ids.dtype,
+                            device=chunk_input_ids.device,
+                        )
+                        + tokenizer.cls_token_id
+                    )
+                    chunk_input_ids = torch.cat(
+                        [cls_tokens, chunk_input_ids], dim=-1
+                    )
+                    mask = torch.ones(
+                        (chunk_attention_mask.size(0), 1),
+                        dtype=chunk_attention_mask.dtype,
+                        device=chunk_attention_mask.device,
+                    )
+                    chunk_attention_mask = torch.cat(
+                        [mask, chunk_attention_mask], dim=-1
+                    )
+
+                    chunk_embeddings, token_num = self.__process_embed_chunk(
+                        chunk_input_ids, chunk_attention_mask, **model_type_dict
+                    )
+
+                    all_embeddings.append(chunk_embeddings * token_num)
+                    all_token_num += token_num
+
+                all_embeddings_tensor = torch.stack(all_embeddings)
+                embedding = torch.sum(all_embeddings_tensor, dim=0) / all_token_num
+                normalized_embeddings = F.normalize(embedding, p=2, dim=1)
+
+                ret["token_num"] = all_token_num
             else:
                 all_embeddings = []
                 all_token_num = 0
@@ -233,41 +276,11 @@ class ModelWorker(BaseModelWorker):
                     chunk_input_ids = input_ids[:, i : i + self.context_len]
                     chunk_attention_mask = attention_mask[:, i : i + self.context_len]
 
-                    # add cls token and mask to get cls embedding
-                    if (
-                        hasattr(self.model, "use_cls_pooling")
-                        and self.model.use_cls_pooling
-                    ):
-                        cls_tokens = (
-                            torch.zeros(
-                                (chunk_input_ids.size(0), 1),
-                                dtype=chunk_input_ids.dtype,
-                                device=chunk_input_ids.device,
-                            )
-                            + tokenizer.cls_token_id
-                        )
-                        chunk_input_ids = torch.cat(
-                            [cls_tokens, chunk_input_ids], dim=-1
-                        )
-                        mask = torch.ones(
-                            (chunk_attention_mask.size(0), 1),
-                            dtype=chunk_attention_mask.dtype,
-                            device=chunk_attention_mask.device,
-                        )
-                        chunk_attention_mask = torch.cat(
-                            [mask, chunk_attention_mask], dim=-1
-                        )
-
                     chunk_embeddings, token_num = self.__process_embed_chunk(
                         chunk_input_ids, chunk_attention_mask, **model_type_dict
                     )
-                    if (
-                        hasattr(self.model, "use_cls_pooling")
-                        and self.model.use_cls_pooling
-                    ):
-                        all_embeddings.append(chunk_embeddings * token_num)
-                    else:
-                        all_embeddings.append(chunk_embeddings)
+ 
+                    all_embeddings.append(chunk_embeddings)
                     all_token_num += token_num
 
                 all_embeddings_tensor = torch.stack(all_embeddings)

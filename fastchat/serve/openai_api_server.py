@@ -517,7 +517,7 @@ async def chat_completion_stream_generator(
             
             delta_text,previous_text = gen_generate(content["text"],previous_text)       
              
-            function_call = content["function_call"]
+            function_call = content.get("function_call",None)
             if function_call:
                 delta_function_call_name, previous_function_name = gen_generate(function_call['name'], previous_function_name)
                 delta_function_call_arguments, previous_function_arguments = gen_generate(function_call['arguments'], previous_function_arguments)
