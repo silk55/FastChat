@@ -85,9 +85,13 @@ def generate_stream_chatglm(
 
     if "chatglm3" in model_type:
         message_list = recover_message_list(prompt)
-        inputs = tokenizer.build_chat_input(
-            query=message_list[-1]["content"], history=message_list[:-1], role="user"
-        ).to(model.device)
+        if message_list and len(message_list) > 0:
+            inputs = tokenizer.build_chat_input(
+                query=message_list[-1]["content"], history=message_list[:-1], role="user"
+            ).to(model.device)
+        # fixme need to check special token
+        else:
+            inputs = tokenizer([prompt], return_tensors="pt").to(model.device)
     else:
         inputs = tokenizer([prompt], return_tensors="pt").to(model.device)
     input_echo_len = len(inputs["input_ids"][0])
