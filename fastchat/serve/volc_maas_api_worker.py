@@ -69,10 +69,10 @@ def get_gen_kwargs(
     
     reqC = ModelRequest(model_name=model_name,
                         version=version,
-                        temperature=params["temperature"],
-                        top_p=params["top_p"],
+                        temperature=params.get("temperature", 1.0),
+                        top_p=params.get("top_p", 1.0),
                         endpoint_id=endpoint_id,
-                        max_new_tokens=params["max_new_tokens"],
+                        max_new_tokens=params.get("max_new_tokens", 256),
                         top_k=top_k,
                         functions=params.get("functions", None)
                         )
