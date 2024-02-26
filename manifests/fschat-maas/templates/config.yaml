@@ -12,7 +12,7 @@ data:
           "ak": {{ .Values.maas.ak | quote }},
           "sk": {{ .Values.maas.sk | quote }},
           "context_length": 32000,
-          "model_names": "skylark2-pro-32k"
+          "model_name": "skylark2-pro-32k"
        },
       "skylark-function-call": {
           "model_path": "volc_maas",
@@ -20,7 +20,7 @@ data:
           "ak": {{ .Values.maas.ak | quote }},
           "sk": {{ .Values.maas.sk | quote }},
           "context_length": 4096,
-          "model_names": "skylark-function-call",
+          "model_name": "skylark-function-call",
           "endpoint_id": "mse-20231227193502-58xhk"
        },
       "skylark2-pro-4k": {
@@ -29,7 +29,7 @@ data:
           "ak": {{ .Values.maas.ak | quote }},
           "sk": {{ .Values.maas.sk | quote }},
           "context_length": 4096,
-          "model_names": "skylark2-pro-4k"
+          "model_name": "skylark2-pro-4k"
        },
       "chatglm-6b-model": {
           "model_path": "volc_maas",
@@ -37,7 +37,7 @@ data:
           "ak": {{ .Values.maas.ak | quote }},
           "sk": {{ .Values.maas.sk | quote }},
           "context_length": 4096,
-          "model_names": "chatglm-6b-model"
+          "model_name": "chatglm-6b-model"
        },
       "skylark-lite-public": {
           "model_path": "volc_maas",
@@ -45,7 +45,7 @@ data:
           "ak": {{ .Values.maas.ak | quote }},
           "sk": {{ .Values.maas.sk | quote }},
           "context_length": 4096,
-          "model_names": "skylark-lite-public"
+          "model_name": "skylark-lite-public"
        },
       "skylark-plus-public": {
           "model_path": "volc_maas",
@@ -53,7 +53,7 @@ data:
           "ak": {{ .Values.maas.ak | quote }},
           "sk": {{ .Values.maas.sk | quote }},
           "context_length": 4096,
-          "model_names": "skylark-plus-public"
+          "model_name": "skylark-plus-public"
        },
       "skylark-chat": {
           "model_path": "volc_maas",
@@ -61,6 +61,6 @@ data:
           "ak": {{ .Values.maas.ak | quote }},
           "sk": {{ .Values.maas.sk | quote }},
           "context_length": 4096,
-          "model_names": "skylark-chat"
+          "model_name": "skylark-chat"
        }
     }
